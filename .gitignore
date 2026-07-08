@@ -1,0 +1,26 @@
+# ---- Artefactos de compilación LaTeX ----
+*.aux
+*.log
+*.out
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.toc
+*.bbl
+*.blg
+*.nav
+*.snm
+*.vrb
+build.log
+
+# ---- MATLAB ----
+*.asv
+*.m~
+slprj/
+
+# ---- Sistema operativo ----
+.DS_Store
+Thumbs.db
+
+# ---- Config local de la herramienta (Claude Code) ----
+.claude/
