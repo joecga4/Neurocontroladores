@@ -55,7 +55,8 @@ Clase~10: (1) \textbf{estacionamiento} en la parte superior en posición vertica
 circular}. La señal de control es el ángulo del timón $\delta$; la red la calcula a
 partir del error de posición y de orientación.
 
-El controlador se entrena por \textbf{retropropagación dinámica (BPTT)}: el gradiente del
+El controlador se entrena por \textbf{retropropagación dinámica (DBP, \emph{Dynamic Back
+Propagation})}: el gradiente del
 costo se propaga en el tiempo a través del jacobiano del lazo cerrado
 (planta cinemática + red), igual que en la familia \code{DynamicBPControl2}. La idea
 central del método (PDF Clase~10) es que \textbf{una sola red entrenada para regular}
@@ -65,9 +66,9 @@ $(x^*,\phi^*)$ según la geometría de la trayectoria y realimentar el error a l
 hecho clave del modelo es que \textbf{la señal de control no depende de $y$}, por lo que
 el estado de control se reduce a $x$ y las orientaciones.
 
-Los scripts base son \code{DynamicBPCarro.m} (entrenamiento del carro por BPTT) y
+Los scripts base son \code{DynamicBPCarro.m} (entrenamiento del carro por DBP) y
 \code{DynamicBPCarroValida.m} (validación). Para el trailer no existía script: se
-\textbf{implementó desde cero} el modelo cinemático articulado y su entrenador BPTT.
+\textbf{implementó desde cero} el modelo cinemático articulado y su entrenador DBP.
 
 % ================= MODELO Y CODIGO =================
 \section{Modelo y código}
@@ -83,23 +84,43 @@ El neurocontrolador recibe el error $[\,x-x^*,\ \phi-\phi^*\,]$ (la orientación
 \emph{envuelta} a $(-\pi,\pi]$ y \textbf{normalizada} por \code{inscale=[10;1]} para no
 saturar las sigmoides) y produce $u\approx\tan\delta$. Se entrena para $x^*=0$,
 $\phi^*=\pi/2$ cubriendo $x\in[-15,15]$ y todo el círculo de orientaciones, por
-\textbf{entrenamiento por etapas} (de cerca a lejos) con \textbf{BPTT truncado} (ventana \code{Ttrunc})
+\textbf{entrenamiento por etapas} (de cerca a lejos) con \textbf{DBP truncado} (ventana \code{Ttrunc})
 y \textbf{recorte de gradiente} (\code{gmax}) para estabilizar el horizonte largo
-($ndata=6000$). El núcleo BPTT vectoriza la recursión de sensibilidades con el jacobiano
+($ndata=6000$). El núcleo DBP vectoriza la recursión de sensibilidades con el jacobiano
 del lazo cerrado \code{jacob\_t = dxdu*dudx + jacob}.
 
 \subsection{Generación de las trayectorias}
-La misma red se usa con referencias $(x^*,\phi^*)$ dependientes de la trayectoria:
-\begin{itemize}
-  \item \textbf{Estacionamiento vertical:} $x^*=0,\ \phi^*=\pi/2$ (regulación directa).
-  \item \textbf{Oblicua $\theta$:} recta $y=\tan\theta\,x$. En cada paso $x^*$ es la
-        abscisa del \emph{pie de la perpendicular} de $(x,y)$ sobre la recta y
-        $\phi^*=\theta$ (para $45^\circ$: $x^*=(x+y)/2$, $\phi^*=\pi/4$).
-  \item \textbf{Circular $R$:} se sigue la \emph{recta tangente local} al círculo
-        (punto más cercano $P$, rumbo tangente $\phi^*$, y $x^*=$ pie de la perpendicular
-        sobre esa tangente), con una \emph{acción anticipativa} de curvatura
-        $\delta^*=\operatorname{atan}(L/R)$.
-\end{itemize}
+La misma red se usa con referencias $(x^*,\phi^*)$ que se recalculan en cada paso según
+la geometría de la trayectoria deseada. En todos los casos la red recibe el error
+$[\,x-x^*,\ \phi-\phi^*\,]$ y, para la circular, se suma un término de dirección
+$\delta^*$.
+
+\paragraph{Estacionamiento vertical.} La meta es fija: $x^*=0$, $\phi^*=\pi/2$
+(regulación directa, sin $\delta^*$).
+
+\paragraph{Trayectoria oblicua (recta a $\theta$).} La recta deseada pasa por el origen,
+$y=\tan\theta\,x$. La posición deseada $x^*$ es la abscisa del \emph{pie de la
+perpendicular} del punto actual $(x,y)$ sobre esa recta, y la orientación deseada es la
+pendiente de la recta:
+\[
+  x^{*}=\big(x\cos\theta+y\sin\theta\big)\cos\theta, \qquad
+  \phi^{*}=\theta, \qquad \delta^{*}=0 .
+\]
+Para $\theta=45^\circ$ se reduce a $x^{*}=(x+y)/2$ y $\phi^{*}=\pi/4$; para
+$\theta=60^\circ$, $x^{*}=(x+\sqrt{3}\,y)/4$ y $\phi^{*}=\pi/3$.
+
+\paragraph{Trayectoria circular (radio $R$, centro $(x_c,y_c)$).} Se sigue la
+\emph{recta tangente local} al círculo. Con el ángulo del punto actual respecto al centro
+$\alpha=\operatorname{atan2}(y-y_c,\;x-x_c)$, el punto más cercano del círculo es
+$P=(x_c+R\cos\alpha,\;y_c+R\sin\alpha)$ y el rumbo tangente (sentido horario)
+$\phi^{*}=\alpha-\pi/2$. La posición deseada $x^{*}$ es la abscisa del pie de la
+perpendicular de $(x,y)$ sobre esa tangente (dirección
+$\mathbf{d}=(\cos\phi^{*},\sin\phi^{*})$), y se añade una dirección de curvatura constante:
+\[
+  x^{*}=P_x+\big[(\,(x,y)-P)\cdot\mathbf{d}\,\big]\cos\phi^{*}, \qquad
+  \phi^{*}=\alpha-\tfrac{\pi}{2}, \qquad
+  \delta^{*}=\operatorname{atan}\!\big(L/R\big) .
+\]
 
 \subsection{Robot tipo trailer (dos cuerpos articulados)}
 El trailer añade la orientación del semirremolque. Con $\theta_1$ (truck), $\theta_2$
@@ -111,7 +132,7 @@ $L_1,L_2$:
   \dot\theta_1=-\tfrac{v}{L_1}\tan\delta,\;\;
   \dot\theta_2=-\tfrac{v}{L_2}\sin\theta_{12}.
 \]
-Se implementó (\code{train\_trailer.m}) el entrenador BPTT sobre el estado de control
+Se implementó (\code{train\_trailer.m}) el entrenador DBP sobre el estado de control
 $s=[x,\theta_1,\theta_2]$ (la $y$ no influye en $\delta$), con los jacobianos analíticos
 $\partial s_{k+1}/\partial s$ y $\partial s_{k+1}/\partial u$ del modelo articulado. La
 red recibe $[\,x-x^*,\ \theta_2-\theta_2^*,\ \theta_{12}\,]$ (incluye el ángulo de
@@ -120,7 +141,7 @@ articulación para evitar el \emph{plegado del remolque}).
 \paragraph{Nota sobre el entrenamiento del trailer.} El trailer es un sistema
 \textbf{subactuado}: para reorientar el remolque hay que generar primero un ángulo de
 articulación con el tractor, lo que exige una asignación de crédito temporal muy larga.
-En la práctica, el BPTT desde cero \emph{no} convergió a una política de estacionamiento
+En la práctica, el DBP desde cero \emph{no} convergió a una política de estacionamiento
 satisfactoria (se estancaba en $\approx 50\%$ del costo inicial). Se verificó primero que
 el \emph{modelo es controlable} con una ley de dirección estabilizadora
 $\delta = k_1(\theta_{12}-\theta_{12}^{\,d})$, con
@@ -135,14 +156,14 @@ tres trayectorias mediante las mismas entradas de error.
 
 \subsection{Robot tipo carro}
 \label{sec:car}
-El entrenamiento BPTT converge: en una etapa del entrenamiento por etapas el costo cae al $\sim5\%$ de
+El entrenamiento DBP converge: en una etapa del entrenamiento por etapas el costo cae al $\sim5\%$ de
 su valor inicial (Fig.~\ref{fig:cartrain}). Para las trayectorias se usó la red del
 entrenamiento por etapas completo (\code{redcarro11}, $n_m=50$, entradas normalizadas).
 
 \begin{figure}[H]
 \centering
 \includegraphics[width=0.5\linewidth]{figs/car_training.png}
-\caption{Convergencia del entrenamiento BPTT del carro (costo relativo $J/J_0$).}
+\caption{Convergencia del entrenamiento DBP del carro (costo relativo $J/J_0$).}
 \label{fig:cartrain}
 \end{figure}
 
@@ -232,7 +253,7 @@ la curvatura efectiva del conjunto tractor--remolque depende de $L_1$ y $L_2$ (e
 \section{Conclusiones}
 \begin{enumerate}
   \item \textbf{Una sola red basta para las tres trayectorias.} El neurocontrolador del
-  carro, entrenado por BPTT solo para \emph{regulación} ($x^*=0,\ \phi^*=\pi/2$) pero
+  carro, entrenado por DBP solo para \emph{regulación} ($x^*=0,\ \phi^*=\pi/2$) pero
   cubriendo todas las orientaciones, resuelve el estacionamiento vertical, el seguimiento
   de rectas oblicuas ($45^\circ$ y $60^\circ$) y la trayectoria circular. Lo único que
   cambia entre trayectorias es \emph{cómo se define} la referencia $(x^*,\phi^*)$ en cada
@@ -244,19 +265,19 @@ la curvatura efectiva del conjunto tractor--remolque depende de $L_1$ y $L_2$ (e
   círculo su recta tangente local más una \emph{acción anticipativa} de curvatura
   $\delta^*=\operatorname{atan}(L/R)$.
 
-  \item \textbf{El entrenamiento BPTT requiere cuidados.} Por el horizonte largo, fueron
+  \item \textbf{El entrenamiento DBP requiere cuidados.} Por el horizonte largo, fueron
   necesarios el \emph{entrenamiento por etapas} incremental, la \emph{normalización} de entradas, el
-  \emph{BPTT truncado} y el \emph{recorte de gradiente}; con ellos el costo converge de
+  \emph{DBP truncado} y el \emph{recorte de gradiente}; con ellos el costo converge de
   forma estable.
 
   \item \textbf{El trailer es un problema más difícil.} Al ser un sistema
   \emph{subactuado} (para reorientar el remolque hay que generar primero un ángulo de
-  articulación con el tractor), el BPTT desde cero no convergió a una política
+  articulación con el tractor), el DBP desde cero no convergió a una política
   satisfactoria. Se implementaron su modelo articulado de cuatro estados y el entrenador
-  BPTT, se verificó que el modelo es controlable con una ley estabilizadora, y la red del
+  DBP, se verificó que el modelo es controlable con una ley estabilizadora, y la red del
   trailer se obtuvo por \emph{aprendizaje supervisado} de esa ley: con ella el trailer
   estaciona en vertical y sigue las trayectorias oblicua y circular. Un entrenamiento
-  BPTT plenamente convergente para el trailer queda como trabajo futuro (entrenamiento por etapas más
+  DBP plenamente convergente para el trailer queda como trabajo futuro (entrenamiento por etapas más
   largo, ventana de truncamiento y regularización).
 \end{enumerate}
 
@@ -265,7 +286,7 @@ la curvatura efectiva del conjunto tractor--remolque depende de $L_1$ y $L_2$ (e
 Los experimentos se ejecutan con \code{Informe/exp/}: \code{car\_experiments.m} (tres
 trayectorias del carro con la red \code{redcarro11}), \code{train\_car\_demo.m}
 (convergencia del entrenamiento), \code{train\_trailer.m} + \code{trailer\_probe.m}
-(entrenamiento BPTT del trailer) y \code{trailer\_experiments.m} (sus trayectorias). Las
+(entrenamiento DBP del trailer) y \code{trailer\_experiments.m} (sus trayectorias). Las
 figuras se guardan en \code{Informe/figs/}.
 
 \end{document}

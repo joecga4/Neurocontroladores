@@ -27,8 +27,9 @@ figure('Visible','off','Position',[0 0 620 380]);
 semilogy(diags,max(errS,1e-6),'-s','LineWidth',1.5); hold on;
 semilogy(diags,max(errD,1e-6),'-o','LineWidth',1.5); grid on;
 xlabel('Inestabilidad (diagonal de A)'); ylabel('Error final medio ||x_f|| (log)');
-legend('Estatico','Dinamico (BPTT)','Location','northwest');
-title('C3 - Estabilizacion vs grado de inestabilidad'); yline(0.1,'k--');
+legend('Estatico','Dinamico (DBP)','Location','northwest');
+title('C3 - Estabilizacion vs grado de inestabilidad');
+yline(0.1,'k--','HandleVisibility','off');   % umbral, sin entrada en la leyenda
 saveas(gcf,fullfile(figdir,'C3_sweep.png')); close;
 fprintf('  errS: '); fprintf('%.3g ',errS); fprintf('\n  errD: '); fprintf('%.3g ',errD); fprintf('\n');
 
@@ -41,7 +42,7 @@ ns1=vecnorm(squeeze(Ss.estado(:,:,1))'); nd1=vecnorm(squeeze(Sd.estado(:,:,1))')
 figure('Visible','off','Position',[0 0 620 380]);
 semilogy(max(ns1,1e-6),'--','LineWidth',1.5); hold on; semilogy(max(nd1,1e-6),'LineWidth',1.5);
 grid on; xlabel('k'); ylabel('||x|| (log)');
-legend('Estatico (diverge)','Dinamico BPTT (estabiliza)','Location','best');
+legend('Estatico (diverge)','Dinamico DBP (estabiliza)','Location','best');
 title('C3 - Respuesta en la planta inestable A=[1.20 0.3;-0.2 1.15]');
 saveas(gcf,fullfile(figdir,'C3_response.png')); close;
 fprintf('  A=1.20  |xf| estatico=%.3g  dinamico=%.3g\n',mean(vecnorm(Ss.xfin)),mean(vecnorm(Sd.xfin)));

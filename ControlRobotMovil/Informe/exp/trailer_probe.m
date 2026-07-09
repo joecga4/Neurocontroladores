@@ -19,7 +19,7 @@ fprintf('  trailer costo mejor=%.4g  (J0=%.4g  relativo=%.3f)\n', o.finalcost, o
 JJ=o.JJ; JJ=JJ(JJ>0);
 figure('Visible','off','Position',[0 0 560 360]);
 plot(JJ/JJ(1),'LineWidth',1.4); grid on; xlabel('Iteracion'); ylabel('Costo relativo J/J_0');
-title('Trailer - Convergencia del entrenamiento BPTT');
+title('Trailer - Convergencia del entrenamiento DBP');
 saveas(gcf,fullfile(figdir,'trailer_training.png')); close;
 
 % Prueba de estacionamiento vertical

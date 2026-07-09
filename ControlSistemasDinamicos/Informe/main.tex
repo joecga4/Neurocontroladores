@@ -67,10 +67,10 @@ por \emph{cómo se calcula el gradiente del costo} a través de la dinámica de 
         control, \code{dxdu = B + G*x}. No considera la dinámica de lazo cerrado; es
         simple y adecuado para \textbf{plantas estables} (mejorar el transitorio,
         regulación y seguimiento).
-  \item \textbf{Aprendizaje dinámico / BPTT} (\code{DynamicBPControl2/2a/2b.m}): el
-        gradiente se propaga \emph{recursivamente en el tiempo} a través del jacobiano
-        del lazo cerrado. Es más costoso pero necesario para \textbf{plantas
-        inestables}.
+  \item \textbf{Aprendizaje dinámico (DBP, \emph{Dynamic Back Propagation})}
+        (\code{DynamicBPControl2/2a/2b.m}): el gradiente se propaga
+        \emph{recursivamente en el tiempo} a través del jacobiano del lazo cerrado. Es más
+        costoso pero necesario para \textbf{plantas inestables}.
 \end{itemize}
 
 El costo minimizado es $J=\tfrac12\sum_k (x_k-x_k^*)^{\top}Q(x_k-x_k^*) + R\,u_k^2$,
@@ -117,13 +117,13 @@ entrenan: cargan \code{redcontrolestatico0} y validan el mismo controlador para
 \code{u=red+uast}) y para \emph{robustez} ante variaciones de la planta (nominal, $A$
 menos estable, $B$ a la mitad, $G$ duplicada), respectivamente.
 
-\subsection{Familia dinámica (BPTT): \texttt{DynamicBPControl2/2a/2b.m}}
+\subsection{Familia dinámica (DBP): \texttt{DynamicBPControl2/2a/2b.m}}
 \textbf{Control2} estabiliza una planta \emph{inestable} ($A$ con diagonal $>1$). El
 gradiente es retropropagación en el tiempo: se mantienen acumuladores recursivos de las
 sensibilidades del estado a los parámetros, actualizados con el jacobiano del lazo
 cerrado:
 
-\begin{lstlisting}[caption={Recursión BPTT vectorizada (jacobiano del lazo cerrado).}]
+\begin{lstlisting}[caption={Recursión DBP vectorizada (jacobiano del lazo cerrado).}]
 jacob   = A + u(k,j).*G;    % jacobiano de la planta  d x(k+1)/d x
 dxdu    = B + G*x;          % d x(k+1)/d u
 dudx    = w'*dndm*v';       % d u/d x  (sensibilidad del control al estado)
@@ -242,17 +242,17 @@ Error r.p. $\|x-r\|$ & $1.3\!\times\!10^{-5}$ & 0.0019 & 0.0093 & 0.046 \\
 \label{sec:C3}
 Este es el experimento central. Se barrió la inestabilidad de la planta (diagonal de $A$
 de $0.98$ a $1.20$) y, en cada nivel, se entrenó un controlador \textbf{estático}
-(desde cero) y uno \textbf{dinámico BPTT} (incremental, con arranque desde pesos previos del
+(desde cero) y uno \textbf{dinámico DBP} (incremental, con arranque desde pesos previos del
 nivel previo). Se mide el error final medio $\|x_f\|$: valores $\gg 0.1$ indican que el
 lazo cerrado \emph{no} se estabiliza.
 
 El resultado (Tabla~\ref{tab:C3}, Fig.~\ref{fig:C3sweep}) es contundente: el control
 estático solo funciona mientras la planta es estable ($0.98$); \textbf{en cuanto la
 planta se vuelve inestable ($\ge 1.02$), diverge} (errores de $10^{3}$ a $10^{23}$),
-porque su gradiente ignora la dinámica de lazo cerrado. El control dinámico BPTT, en
+porque su gradiente ignora la dinámica de lazo cerrado. El control dinámico DBP, en
 cambio, \textbf{estabiliza todos los niveles} hasta $A_{ii}=1.20$ con error
 $\sim10^{-10}$. La Fig.~\ref{fig:C3resp} muestra la respuesta en la planta más inestable:
-el estado del sistema con control estático explota mientras el BPTT lo lleva al origen.
+el estado del sistema con control estático explota mientras el DBP lo lleva al origen.
 Esto confirma la tesis de la Clase 9: el aprendizaje estático no sirve para plantas
 inestables; se requiere el dinámico.
 
@@ -264,7 +264,7 @@ inestables; se requiere el dinámico.
 Diagonal de $A$ & 0.98 & 1.02 & 1.06 & 1.10 & 1.15 & 1.20 \\
 \midrule
 Estático & $7\!\times\!10^{-12}$ & $1.9\!\times\!10^{3}$ & $7\!\times\!10^{9}$ & $5\!\times\!10^{15}$ & $1.5\!\times\!10^{23}$ & $1.1\!\times\!10^{3}$ \\
-Dinámico (BPTT) & $3\!\times\!10^{-11}$ & $3\!\times\!10^{-10}$ & $2\!\times\!10^{-10}$ & $7\!\times\!10^{-11}$ & $5\!\times\!10^{-11}$ & $9\!\times\!10^{-12}$ \\
+Dinámico (DBP) & $3\!\times\!10^{-11}$ & $3\!\times\!10^{-10}$ & $2\!\times\!10^{-10}$ & $7\!\times\!10^{-11}$ & $5\!\times\!10^{-11}$ & $9\!\times\!10^{-12}$ \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -281,16 +281,16 @@ Dinámico (BPTT) & $3\!\times\!10^{-11}$ & $3\!\times\!10^{-10}$ & $2\!\times\!1
 \end{minipage}
 \end{figure}
 
-\subsection{Control dinámico BPTT: realimentación parcial, perturbaciones y ruido}
+\subsection{Control dinámico DBP: realimentación parcial, perturbaciones y ruido}
 \label{sec:C4}
-Todos los controladores BPTT de esta sección se entrenaron mediante \textbf{entrenamiento por etapas}
+Todos los controladores DBP de esta sección se entrenaron mediante \textbf{entrenamiento por etapas}
 (aprendizaje incremental subiendo la inestabilidad con arranque desde pesos previos). En efecto,
-un hallazgo del trabajo es que entrenar BPTT \emph{desde cero} sobre una planta muy
+un hallazgo del trabajo es que entrenar DBP \emph{desde cero} sobre una planta muy
 inestable no converge; el entrenamiento por etapas —tal como emplean los scripts originales
 (\code{load} incremental)— es esencial.
 
 \paragraph{Realimentación completa vs parcial.}
-Con realimentación \textbf{completa} del estado, el BPTT estabiliza la planta inestable
+Con realimentación \textbf{completa} del estado, el DBP estabiliza la planta inestable
 con error $\sim10^{-15}$ (Fig.~\ref{fig:C4part}). Con realimentación \textbf{parcial}
 (una sola salida medida $y=Cx$, $ne=1$), el problema es mucho más difícil: entrenando
 desde cero (con entrenamiento por etapas), \emph{ninguno} de los controladores de una sola salida
@@ -302,7 +302,7 @@ práctica es doble: reducir la información medida degrada drásticamente la est
 por realimentación de salida, y su entrenamiento exige un buen punto de partida.
 
 \paragraph{Rechazo de perturbaciones.}
-El regulador BPTT sobre la planta más inestable ($A_{ii}=1.20$) mantiene el estado en el
+El regulador DBP sobre la planta más inestable ($A_{ii}=1.20$) mantiene el estado en el
 origen; al inyectar una perturbación senoidal externa de amplitud creciente, el error en
 régimen permanente crece de forma proporcional (Tabla~\ref{tab:C4}, Fig.~\ref{fig:C4dist}):
 sin perturbación regula de forma exacta ($\sim10^{-15}$) y con amplitud $0.1$ el error se
@@ -312,12 +312,12 @@ mantiene acotado ($\approx 0.58$), sin desestabilizarse.
 Entrenando con ruido de medición sumado a la entrada de la red (como en \code{Control2b}),
 el controlador resultante regula igual de bien que sin ruido: el error final permanece
 en $\sim2\times10^{-14}$ para todos los niveles de ruido ensayados
-(Fig.~\ref{fig:C4noise}). El BPTT es \textbf{robusto al ruido de medición} durante el
+(Fig.~\ref{fig:C4noise}). El DBP es \textbf{robusto al ruido de medición} durante el
 entrenamiento, pues el gradiente promediado sobre el horizonte y las condiciones
 iniciales atenúa su efecto.
 
 \begin{table}[H]\centering
-\caption{Error en régimen permanente del regulador BPTT vs amplitud de la perturbación.}
+\caption{Error en régimen permanente del regulador DBP vs amplitud de la perturbación.}
 \label{tab:C4}
 \begin{tabular}{lccccc}
 \toprule
@@ -359,18 +359,18 @@ Error r.p. $\|x\|$ & $10^{-15}$ & 0.055 & 0.166 & 0.278 & 0.577 \\
 
   \item \textbf{Para plantas inestables el aprendizaje estático falla y el dinámico es
   imprescindible} (Sec.~\ref{sec:C3}): apenas la planta se vuelve inestable el control
-  estático diverge, mientras que el BPTT la estabiliza en todo el rango
+  estático diverge, mientras que el DBP la estabiliza en todo el rango
   ($A_{ii}$ hasta $1.20$) con error $\sim10^{-10}$. Es el resultado central y confirma la
   tesis de la Clase 9.
 
-  \item \textbf{El entrenamiento BPTT requiere un entrenamiento por etapas} (aprendizaje incremental de
+  \item \textbf{El entrenamiento DBP requiere hacerse por etapas} (aprendizaje incremental de
   la inestabilidad con arranque desde pesos previos): entrenarlo de golpe sobre una planta muy
   inestable no converge.
 
   \item \textbf{La realimentación parcial es mucho más exigente} (Sec.~\ref{sec:C4}):
-  con el estado completo el BPTT estabiliza fácilmente, pero con una sola salida medida
+  con el estado completo el DBP estabiliza fácilmente, pero con una sola salida medida
   el entrenamiento desde cero no lo logra y requiere un buen punto de partida
-  (\emph{arranque desde pesos previos}), como hace el script original. Además, el BPTT rechaza
+  (\emph{arranque desde pesos previos}), como hace el script original. Además, el DBP rechaza
   perturbaciones acotadas y es \emph{robusto al ruido de medición} durante el
   entrenamiento.
 \end{enumerate}

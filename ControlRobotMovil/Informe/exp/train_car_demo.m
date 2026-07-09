@@ -57,7 +57,7 @@ for it=1:niter
 end
 figure('Visible','off','Position',[0 0 560 360]);
 plot(JJ/JJ(1),'LineWidth',1.4); grid on; xlabel('Iteracion'); ylabel('Costo relativo J/J_0');
-title('Carro - Convergencia del entrenamiento BPTT (etapa 1)');
+title('Carro - Convergencia del entrenamiento DBP (etapa 1)');
 saveas(gcf,fullfile(figdir,'car_training.png')); close;
 fprintf('  car demo: J0=%.4g Jfin=%.4g (relativo=%.3f)\n',JJ(1),JJ(end),JJ(end)/JJ(1));
 end

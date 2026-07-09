@@ -22,7 +22,7 @@ for i=1:3
 end
 figure('Visible','off','Position',[0 0 640 380]);
 semilogy(max(nrm,1e-6),'LineWidth',1.4); grid on; xlabel('k'); ylabel('||x|| (log)');
-legend(cname,'Location','best'); title('C4 - Realimentacion completa vs parcial (BPTT)');
+legend(cname,'Location','best'); title('C4 - Realimentacion completa vs parcial (DBP)');
 saveas(gcf,fullfile(figdir,'C4_partial.png')); close;
 fprintf('  |xf| completa=%.3g  C=[0 1]=%.3g  C=[1 0]=%.3g\n',fxa(1),fxa(2),fxa(3));
 
@@ -58,7 +58,7 @@ end
 figure('Visible','off','Position',[0 0 560 360]);
 plot(noises,nerr,'-o','LineWidth',1.3); grid on;
 xlabel('Ruido de medicion en el entrenamiento \eta'); ylabel('Error final medio ||x_f||');
-title('C4 - Efecto del ruido de medicion (BPTT)');
+title('C4 - Efecto del ruido de medicion (DBP)');
 saveas(gcf,fullfile(figdir,'C4_noise.png')); close;
 fprintf('  errfinal vs ruido: '); fprintf('%.4g ',nerr); fprintf('\n');
 
