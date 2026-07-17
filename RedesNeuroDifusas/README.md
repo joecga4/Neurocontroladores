@@ -28,3 +28,7 @@ LogicaDifusa (difería solo en un parámetro de sintonía); se movió allí como
 - Membresías gaussianas (diferenciables → entrenables) vs triangulares del Mamdani clásico.
 - Cómo el mismo controlador de rumbo se reutiliza cambiando solo la referencia
   (posición fija, proyección sobre un tramo, o el robot líder).
+
+## Material
+
+- `Clase12_ControlDifusoTruckTrailer.pdf`

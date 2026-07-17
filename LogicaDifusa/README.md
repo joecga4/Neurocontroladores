@@ -22,6 +22,7 @@ defuzzificación por **centro de gravedad**. Todos son **scripts** independiente
 
 ## Material
 
-- `Clase11_ControlDifusoRobotCarro.pdf`, `Clase12_ControlDifusoTruckTrailer.pdf`
+- `Clase11_ControlDifusoRobotCarro.pdf`
+- `Clase12_ControlDifusoTruckTrailer.pdf` (en `../RedesNeuroDifusas/`)
 - `Clase13_Paper_ControlLinealDifuso_TruckTrailer.pdf` (paper IEEE FUZZ 2020 en que se basa el enfoque LQR)
 - `Informe/` (informe 6 en LaTeX + PDF)
