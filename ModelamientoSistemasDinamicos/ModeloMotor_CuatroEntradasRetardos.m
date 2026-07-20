@@ -1,25 +1,64 @@
-% Entrenamiento batch
-% Solo 4 entradas: v, x(k), x(k-1), x(k-2)
+% ModeloMotor_CuatroEntradasRetardos (original: MotorNeuroEstatico1.m)
+% =========================================================================
+% Identificacion NARX de un motor DC con tornillo sin fin usando una red
+% neuronal ESTATICA de 4 entradas: voltaje v(k) y las posiciones
+% retardadas x(k-1), x(k-2), x(k-3). Entrenamiento batch clasico
+% (backpropagation estatico: aqui NO hay recursion de gradiente en el
+% tiempo porque la red no realimenta su propia salida).
+%
+% Pipeline:
+%   1. Plantear el motor DC de 3 estados [posicion; velocidad; corriente]
+%      y discretizarlo con c2d (dt = 0.0075 s).
+%   2. Generar la senal de excitacion vv (perfiles v1..v4 de voltaje,
+%      saturados a +/-24 V) y simular la planta para obtener pos(k).
+%   3. Construir la matriz NARX xb = [volt, pos(k-1), pos(k-2), pos(k-3)]
+%      (cada columna xN es la anterior retardada un paso, con 0 inicial)
+%      y escalar entradas y salida a +/-1 con max(abs(.)).
+%   4. Entrenar la red 4-20-1 (sigmoide bipolar en la capa oculta, salida
+%      lineal) en batch: acumular dJdw y dJdv sobre todo el lote y
+%      actualizar una vez por iteracion.
+%
+% Configuracion vigente del original:
+%   - vv se asigna CUATRO veces seguidas; la efectiva es la ULTIMA
+%     (vv = v4, senal de VALIDACION). Para entrenar, deja solo vv = v1.
+%   - Friccion seca anulada (Fseca = 0*100) y ruido anulado (nruido = 0),
+%     pero la llamada a randn se conserva (consume numeros del generador).
+%
+% Rarezas heredadas del original (NO corregidas, solo documentadas):
+%   - Kt, Kb, I se asignan dos veces; vale la SEGUNDA (parametros
+%     ajustados; la primera asignacion queda como referencia historica).
+%   - "load motorred1" ocurre DESPUES de pedir bias y de escalar: los
+%     bias/factx/facty cargados PISAN a los recien calculados (solo
+%     afectan al save final; xesc ya quedo escalado con los locales).
+%   - pot (potencia) se calcula pero no se usa.
+%   - La variable "error" enmascara la funcion error() de MATLAB.
+%   - a = ones(nm,1) deja la pendiente sigmoidea fija en 1 (no se entrena).
+%   - JJ sin punto y coma imprime el costo en cada iteracion (progreso).
+%   - pos, vel, amp, t, volt, pot, xesc, yesc, y, error, J crecen sin
+%     preasignar; se dejan asi por fidelidad con el original.
+%   - Titulos normalizados a ASCII ("Posicion" sin tilde).
 
+%% Limpieza
 clear;
 clc;
 close all;
 
-R = 1.1;
-L = 0.0001;
-Kt = 0.0573;
-Kt = 0.0815;
-Kb = 0.05665;
-Kb = 0.0715;
-I = 4.326e-5;
-I = 15.865E-5;
-p = 0.0025;
-m = 30.0;
-c = 200;
-r = 0.01;
-alfa = 45*pi/180;
+%% Parametros del motor DC con tornillo sin fin
+R = 1.1;           % resistencia de armadura
+L = 0.0001;        % inductancia de armadura
+Kt = 0.0573;       % constante de torque (valor original)
+Kt = 0.0815;       % ... ajustado: vale este
+Kb = 0.05665;      % constante contraelectromotriz (valor original)
+Kb = 0.0715;       % ... ajustado: vale este
+I = 4.326e-5;      % inercia del rotor (valor original)
+I = 15.865E-5;     % ... ajustado: vale este
+p = 0.0025;        % paso del tornillo sin fin
+m = 30.0;          % masa desplazada
+c = 200;           % friccion viscosa
+r = 0.01;          % radio del tornillo
+alfa = 45*pi/180;  % angulo de la helice
 
-d = m + 2*pi*I*tan(alfa)/(p*r);
+d = m + 2*pi*I*tan(alfa)/(p*r);   % masa equivalente reflejada
 
 a22 = -c/d;
 a23 = Kt*tan(alfa)/(r*d);
@@ -29,22 +68,22 @@ a33 = -R/L;
 b31 = 1/L;
 w21 = -1/d;
 
-
-A = [ 0   1   0   
-      0  a22 a23 
+% Estados: [posicion; velocidad; corriente]
+A = [ 0   1   0
+      0  a22 a23
       0  a32 a33 ];
-      
+
 B = [ 0
       0
       b31 ];
-   
-Wf = [ 0
-       w21       
-       0 ];
-    
 
-dt = 0.0075;
-t05 = 0:dt:0.5;
+Wf = [ 0           % entrada de perturbacion: friccion seca
+       w21
+       0 ];
+
+%% Senales de excitacion (perfiles de voltaje)
+dt = 0.0075;                 % paso de muestreo [s]
+t05 = 0:dt:0.5;              % tramos de 0.5, 1, 2 y 3 segundos
 t05 = t05';
 nt05 = length(t05);
 ones05 = ones(nt05,1);
@@ -61,9 +100,9 @@ t3 = t3';
 nt3 = length(t3);
 ones3 = ones(nt3,1);
 
-vmax = 24;
-     
-v1 = [  vmax*sin(2*pi*0.5*t3)
+vmax = 24;                   % voltaje maximo [V]
+
+v1 = [  vmax*sin(2*pi*0.5*t3)      % perfil de ENTRENAMIENTO
        -0.75*vmax*ones1
        0.5*vmax*ones1
        vmax*ones1
@@ -71,12 +110,12 @@ v1 = [  vmax*sin(2*pi*0.5*t3)
         0*ones1;
         -vmax*ones1
         -vmax*ones1
-        -vmax*ones1    
+        -vmax*ones1
         vmax*sin(2*pi*2*t2)
         vmax*ones1
-        0*ones1 ]; 
-    
-v2 = [  vmax*ones2
+        0*ones1 ];
+
+v2 = [  vmax*ones2                 % perfil de validacion 1
       -vmax*ones2
       -vmax*ones2
        vmax*ones1
@@ -84,62 +123,66 @@ v2 = [  vmax*ones2
       -vmax*ones1
        vmax*ones1
        vmax*ones1
-       0*ones1 ];         
-     
-v3 = [ vmax*ones05
+       0*ones1 ];
+
+v3 = [ vmax*ones05                 % perfil de validacion 2
       -vmax*ones05
        0*ones1 ];
-    
-v4 = [  vmax*sin(2*pi*2*t3)
+
+v4 = [  vmax*sin(2*pi*2*t3)        % perfil de validacion 3
        -1.0*vmax*ones1
        -0.5*vmax*ones1
          vmax*ones1
-        -vmax*sin(2*pi*1*t3) ]; 
-       
+        -vmax*sin(2*pi*1*t3) ];
+
+% OJO: las cuatro asignaciones estan activas en el original; la efectiva
+% es la ULTIMA (vv = v4). Para entrenar, deja activa solo vv = v1.
 vv = v1;    % Entrenamiento
-vv = v2;    % Validacion 
+vv = v2;    % Validacion
 vv = v3;    % Validacion
 vv = v4;    % Validacion
 
-nv = length(vv);    
-    
-Fseca = 0*100;   % 0 - 1
+nv = length(vv);
 
-[Ak,Bk] = c2d(A,B,dt);
-[Ak,Wk] = c2d(A,Wf,dt);
+%% Simulacion de la planta discreta
+Fseca = 0*100;   % friccion seca anulada (0 - 1)
 
-x(1,1) = 0.1;
+[Ak,Bk] = c2d(A,B,dt);       % discretizacion exacta de la planta
+[Ak,Wk] = c2d(A,Wf,dt);      % misma Ak; Wk discretiza la friccion
+
+x(1,1) = 0.1;                % estado inicial [pos; vel; corriente]
 x(2,1) = -0.1;
 x(3,1) = 0;
 
 for k = 1:nv
-   pos(k,1) = x(1,1);
-   vel(k,1) = x(2,1);
-   amp(k,1) = x(3,1);
-   t(k,1) = dt*(k-1);
-   u = vv(k,1);
-   if( u > 24)
-      u = 24;            
-   elseif( u < -24 )
-      u = -24;
-   end      
-   volt(k,1) = u;
-   pot(k,1) = u*x(3,1);
-   if(x(2,1) >= 0)
-      Ff = Fseca*1;
-   elseif(x(2,1) < 0)
-      Ff = -Fseca*1;
-   end   
-   x = Ak*x + Bk*u + Wk*Ff;
+    pos(k,1) = x(1,1);
+    vel(k,1) = x(2,1);
+    amp(k,1) = x(3,1);
+    t(k,1) = dt*(k-1);
+    u = vv(k,1);
+    if( u > 24)              % saturacion del voltaje a +/-24 V
+        u = 24;
+    elseif( u < -24 )
+        u = -24;
+    end
+    volt(k,1) = u;
+    pot(k,1) = u*x(3,1);     % rareza: potencia calculada pero no usada
+    if(x(2,1) >= 0)          % friccion seca opuesta al movimiento
+        Ff = Fseca*1;
+    elseif(x(2,1) < 0)
+        Ff = -Fseca*1;
+    end
+    x = Ak*x + Bk*u + Wk*Ff;
 end
 
+% Ruido de medicion anulado (nruido = 0); la llamada a randn se conserva
 nruido = 0;   %1
 pos = pos + nruido*0.0012*randn(nv,1);
 
-
+%% Graficas de la planta simulada
 figure(1);
 plot(t,pos);
-title('Posición m');
+title('Posicion m');
 figure(2);
 plot(t,vel);
 title('Velocidad m/s');
@@ -150,23 +193,25 @@ figure(4);
 plot(t,amp);
 title('Corriente A');
 
-x1 = volt;
-x2(1,1) = 0;
+%% Construccion de las entradas NARX (voltaje + 3 retardos de posicion)
+x1 = volt;                   % v(k)
+x2(1,1) = 0;                 % pos retardada 1 paso
 x2(2:nv,1) = pos(1:nv-1,1);
-x3(1,1) = 0;
+x3(1,1) = 0;                 % pos retardada 2 pasos
 x3(2:nv,1) = x2(1:nv-1,1);
-x4(1,1) = 0;
+x4(1,1) = 0;                 % pos retardada 3 pasos
 x4(2:nv,1) = x3(1:nv-1,1);
 
-xb = [ x1  x2  x3  x4 ];
-yb = pos;
+xb = [ x1  x2  x3  x4 ];     % lote de entrenamiento
+yb = pos;                    % salida deseada: posicion actual
 nx = length(xb);
 
-ne = 4;
-nm = 20;
-ns = 1;
+%% Arquitectura de la red estatica
+ne = 4;    % entradas (5 si se agrega bias)
+nm = 20;   % neuronas ocultas sigmoideas
+ns = 1;    % salida: posicion
 
-% Escalamiento
+%% Escalamiento de entradas y salida a +/-1
 factx = max(abs(xb));
 facty = max(abs(yb));
 
@@ -179,60 +224,65 @@ xesc(:,4) = xb(:,4)./factx(1,4);
 yesc(:,1) = yb(:,1)./facty(1,1);
 
 if(bias == 1)
-      ne = ne + 1;
-      xesc = [ xesc ones(nx,1) ];   
+    ne = ne + 1;
+    xesc = [ xesc ones(nx,1) ];
 end
 
+%% Inicializacion y carga de pesos previos
 v = 0.25*randn(ne,nm);
 w = 0.25*randn(nm,ns);
-a = ones(nm,1);
+a = ones(nm,1);              % pendiente sigmoidea fija (no se entrena)
 
+% OJO: motorred1.mat NO existe en el repo (rotura conocida, ver README).
+% Para la primera corrida comenta la linea "load motorred1;" y ejecuta con
+% la inicializacion aleatoria; el "save motorred1 ..." del final creara el
+% .mat. Ademas el load PISA bias/factx/facty calculados arriba (rareza).
 load motorred1;    % Sin bias. Incluye pesos y factores de escalamiento
 % load motorred2;    % Con bias
 
+%% Parametros de aprendizaje
 eta = input('eta pesos : ');
 niter = input('Introducir numero de iteraciones : ');
 
+%% Entrenamiento batch (backpropagation estatico)
 for iter = 1:niter
-JJ = 0;
-dJdw = 0;
-dJdv = 0;
-for k = 1:nx   
-  in = (xesc(k,:))';
-  m = v'*in;
-  n = 2.0./(1+exp(-m./a)) - 1;
-%  n = exp(-m.^2);
-%  n = m; 
-  out = w'*n;
-  y(k,:) = out';
-  er = out - (yesc(k,:))';
-  error(k,:) = er';
-  JJ = JJ + 0.5*er'*er;
-  dndm = (1 - n.*n)/2;
-%  dndm = -2.0*(n.*m);
-%  dndm = ones(nm,1);
-  dJdw = dJdw + n*er';
-  dJdv = dJdv + in * (dndm.*(w*er))';
-end
-w = w - eta*dJdw/nx;
-v = v - eta*dJdv/nx;
-JJ
-J(iter,1) = JJ;
+    JJ = 0;
+    dJdw = 0;
+    dJdv = 0;
+    for k = 1:nx
+        in = (xesc(k,:))';
+        m = v'*in;
+        n = 2.0./(1+exp(-m./a)) - 1;    % sigmoide bipolar
+%       n = exp(-m.^2);                 % alternativa: gaussiana
+%       n = m;                          % alternativa: lineal
+        out = w'*n;
+        y(k,:) = out';
+        er = out - (yesc(k,:))';
+        error(k,:) = er';               % rareza: enmascara error() de MATLAB
+        JJ = JJ + 0.5*er'*er;
+        dndm = (1 - n.*n)/2;
+%       dndm = -2.0*(n.*m);             % derivada de la gaussiana
+%       dndm = ones(nm,1);              % derivada lineal
+        dJdw = dJdw + n*er';
+        dJdv = dJdv + in * (dndm.*(w*er))';
+    end
+    w = w - eta*dJdw/nx;     % actualizacion batch (gradiente promedio)
+    v = v - eta*dJdv/nx;
+    JJ                       % muestra el costo de la iteracion
+    J(iter,1) = JJ;
 end
 
+%% Graficas de resultados
 figure(8);
-plot(y(:,1),'-r');
+plot(y(:,1),'-r');           % salida de la red (rojo)
 hold on;
-plot(yesc(:,1),'-b');
+plot(yesc(:,1),'-b');        % salida deseada escalada (azul)
 title('Salida y1');
 
 figure(9);
 plot(J);
 title('Funcion de costo J');
 
+%% Guardado de la red entrenada
 save motorred1 v w bias factx facty;
 % save motorred2 v w bias factx facty;
-
-
-
-
