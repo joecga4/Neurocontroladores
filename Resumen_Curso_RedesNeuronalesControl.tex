@@ -1,0 +1,540 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[margin=2.1cm]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs,array,multirow}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,calc}
+\renewcommand{\figurename}{Figura}
+\renewcommand{\tablename}{Tabla}
+\renewcommand{\contentsname}{Contenido}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+\usepackage[hidelinks]{hyperref}
+
+\definecolor{azulpucp}{RGB}{0,60,120}
+\definecolor{grisc}{RGB}{245,245,245}
+
+\lstset{
+  language=Matlab, basicstyle=\ttfamily\small, frame=single,
+  framerule=0.3pt, backgroundcolor=\color{grisc},
+  showstringspaces=false, breaklines=true, columns=flexible
+}
+
+\newcommand{\pd}[2]{\frac{\partial #1}{\partial #2}}
+\newcommand{\td}[2]{\frac{\overline{\partial #1}}{\overline{\partial #2}}}
+\newcommand{\grados}{^{\circ}}
+
+% caja de idea clave
+\newcommand{\clave}[1]{\begin{center}\fcolorbox{azulpucp}{blue!4}{\parbox{0.93\linewidth}{\small #1}}\end{center}}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small Resumen del curso}
+\fancyhead[R]{\small Redes Neuronales Aplicadas al Control}
+\fancyfoot[C]{\small\thepage}
+
+\setlength{\parskip}{4pt}
+\setlength{\parindent}{0pt}
+
+\setcounter{secnumdepth}{2}
+
+\begin{document}
+
+\begin{center}
+{\large\bfseries Pontificia Universidad Católica del Perú}\\[2pt]
+{\bfseries Maestría en Ingeniería de Control y Automatización}\\[8pt]
+{\Large\bfseries Redes Neuronales Aplicadas al Control}\\[3pt]
+{\large Resumen de estudio del curso (Clases 7--13)}\\[4pt]
+{\small Material consolidado por temas, sin repeticiones. Cada sección indica la(s) clase(s) de origen.}
+\end{center}
+
+\vspace{2pt}
+\hrule
+\vspace{6pt}
+
+\tableofcontents
+
+\vspace{6pt}
+
+%=====================================================================
+\section{Modelamiento de sistemas dinámicos con redes neuronales \hfill {\normalsize [Clase 7]}}
+
+\subsection{Modelo estático vs.\ modelo dinámico}
+
+Una red neuronal puede entrenarse como \textbf{modelo} de un sistema dinámico a partir de datos entrada--salida $(u_k,\,y^{*}_{k+1})$. La distinción fundamental es \emph{de dónde proviene la entrada $y_k$ del modelo}:
+
+\begin{center}
+\small
+\begin{tabular}{p{3.6cm} p{5.3cm} p{5.6cm}}
+\toprule
+ & \textbf{Modelo estático} & \textbf{Modelo dinámico (recurrente)}\\
+\midrule
+Ecuación & $y_{k+1}=f(y^{*}_k,\,u_k)$ & $y_{k+1}=f(y_k,\,u_k)$\\
+Entrada $y_k$ & medida del sistema real & realimentada del propio modelo\\
+¿Requiere el sistema en operación? & sí (inconveniente para simular y predecir) & no (tras entrenar es independiente)\\
+Robustez al ruido & baja (el ruido entra a la red) & alta (el ruido sólo afecta al entrenamiento)\\
+Entrenamiento & backpropagation estándar & BPTT o DBP (derivadas totales)\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Modelamiento con redes estáticas (dinámica artificial)}
+
+Se crea una dinámica artificial usando como entradas de la red \textbf{valores pasados} de $u$ y de $y^{*}$:
+\[
+y_{k+1}=f(y^{*}_k,\,y^{*}_{k-1},\dots,\,u_k,\,u_{k-1},\dots)
+\]
+El número de retardos se elige por prueba y error, o analizando el \textbf{modelo lineal aproximado}: si
+\[
+H(z)=\frac{Y(z)}{U(z)}=\frac{b_1 z+b_0}{z^2+a_1 z+a_0}
+\quad\Longrightarrow\quad
+y_{k+1}=-a_1y_k-a_0y_{k-1}+b_1u_k+b_0u_{k-1}
+\]
+un primer intento de entradas es $\{y_k,\,y_{k-1},\,u_k,\,u_{k-1}\}$. Se generaliza a sistemas MIMO usando los pasados de cada entrada y cada salida. Normalmente no se requiere neurona de sesgo (equivale a un término constante en la ecuación del sistema).
+
+\subsection{Modelamiento con redes dinámicas (recurrentes)}
+
+La salida de la red se realimenta como entrada en el paso siguiente. Con datos $\{u_k,\,y_k^{*}\}_{k=1}^{N}$ se minimiza
+\[
+J=\frac12\sum_{k=1}^{N}(y_k-y_k^{*})^{T}(y_k-y_k^{*}),
+\qquad
+v\leftarrow v-\eta\,\td{J}{v},\qquad w\leftarrow w-\eta\,\td{J}{w}
+\]
+donde las derivadas son \textbf{totales} porque $y_k$ depende de los pesos a través de todos los pasos anteriores:
+\[
+\td{J}{w}=\sum_{k=1}^{N}(y_k-y_k^{*})^{T}\,\td{y_k}{w}
+\]
+
+\clave{\textbf{Ecuación recursiva (DBP) para modelamiento} — la misma idea reaparece en control:
+\[
+\td{y_{k+1}}{w}=\pd{y_{k+1}}{w}+\pd{y_{k+1}}{y_k}\,\td{y_k}{w},
+\qquad \td{y_0}{w}=0
+\]
+donde $\pd{y_{k+1}}{w}$ (derivada simple) y el Jacobiano $\pd{y_{k+1}}{y_k}$ se calculan directamente de la red en el último paso, pues todas sus ecuaciones son conocidas. Se prefiere DBP sobre BPTT por eficiencia de memoria (avanza hacia adelante junto con la simulación).}
+
+\textbf{Medición parcial.} Si el estado es $[y_1\ y_2]^T$ pero sólo se mide $y_1$, el costo se define sólo con la variable medida usando la matriz de ponderación:
+\[
+J=\frac12\sum_k (y_k-y_k^{*})^{T} Q\,(y_k-y_k^{*}),\qquad Q=\begin{bmatrix}1&0\\0&0\end{bmatrix}
+\]
+y las derivadas totales se calculan igual, con la misma recursión.
+
+\textbf{Identificación de parámetros de sistemas lineales.} Un sistema lineal $y_{k+1}=Ay_k+Bu_k$ se representa con una red de \emph{neuronas lineales} cuyos pesos son directamente $a_{ij}$ y $b_i$; el entrenamiento identifica los parámetros. (Para sistemas lineales existe realización mínima controlable y observable.)
+
+\textbf{Riqueza de datos.} La entrada $u_k$ de entrenamiento debe ser rica y variada para excitar toda la dinámica del sistema.
+
+%=====================================================================
+\section{Control de sistemas usando redes neuronales \hfill {\normalsize [Clase 9]}}
+
+\subsection{Objetivos de control}
+
+\begin{itemize}[itemsep=1pt]
+\item \textbf{Estabilización}: hacer BIBO/asintóticamente estable un sistema inestable (converger a un equilibrio).
+\item \textbf{Regulación}: mantener un punto de operación pese a perturbaciones internas/externas (ej.: aislamiento de vibraciones).
+\item \textbf{Tracking}: seguir una trayectoria de referencia.
+\end{itemize}
+Para sistemas inestables primero se resuelve la estabilización y luego se adapta el controlador a regulación/tracking.
+
+El neuro--controlador considerado es una red \emph{estática} $u_k=N(y_k,\,r)$; aun así, \textbf{el lazo cerrado es dinámico} (la salida se vuelve entrada del paso siguiente). Ambos métodos de entrenamiento son \emph{basados en modelo} (se requiere $y_{k+1}=f(y_k,u_k)$, como ecuación o como red).
+
+\subsection{Aprendizaje estático}
+
+La red se entrena para que la integración controlador--sistema en \textbf{lazo abierto} tenga el mismo mapeo entrada--salida que un \emph{sistema deseado} $y_{k+1}^d=A_d\,y_k$. Costo (con ponderaciones $Q$, $R$):
+\[
+J=\frac12\sum_k\Bigl[(y_k-y_k^{d})^{T}Q\,(y_k-y_k^{d})+u_k^{T}R\,u_k\Bigr]
+\]
+Se usan \textbf{derivadas parciales simples} (no se considera la dinámica del lazo):
+\[
+\pd{J_k}{w}=(y_{k+1}-y_{k+1}^{d})^{T}\,\pd{y_{k+1}}{u_k}\,\pd{u_k}{w}
+\]
+donde $\pd{y_{k+1}}{u_k}$ sale del \emph{modelo} y $\pd{u_k}{w}$, $\pd{u_k}{v}$ del \emph{controlador}. Puede entrenarse patrón a patrón (pattern) o por lotes (batch), y el controlador puede incluir salidas pasadas como entradas.
+
+\clave{\textbf{Limitaciones del aprendizaje estático:} (a) el costo no siempre decrece: hay que monitorear y detener el entrenamiento; (b) se aplica sobre todo a sistemas \emph{estables} (mejorar respuesta, regulación, tracking); (c) suele fallar con sistemas \emph{inestables}, porque ignora la dinámica del lazo cerrado. Para inestables: aprendizaje dinámico.}
+
+\subsection{Aprendizaje dinámico y despliegue temporal}
+
+La red se entrena para que el \textbf{lazo cerrado} tenga la respuesta de un sistema deseado $y^d_{k+1}=A_d\,y^d_k$ (elegido físicamente alcanzable). Al desplegar el lazo en el tiempo:
+\begin{itemize}[itemsep=1pt]
+\item El mismo lazo (misma red, mismos pesos $v,w$; mismo modelo) se repite en cada paso $1,2,\dots,N$.
+\item La salida del paso $k$ es entrada del paso $k+1$.
+\item Aunque $w$ es el mismo en todos los pasos, la \emph{derivada} de $y_k$ respecto al $w$ de cada paso es distinta; la \textbf{derivada total} $\td{y_k}{w}$ comprende la dependencia por todos los caminos.
+\end{itemize}
+Los pesos se actualizan con derivadas totales: $\ \td{J}{w}=\sum_k (y_k-y^{d}_k)^{T}Q\,\td{y_k}{w}$ (ídem $v$).
+
+\subsection{El algoritmo DBP para control (fórmula central del curso)}
+
+\clave{\textbf{Ecuación recursiva del DBP} para el lazo cerrado $u_k=N(y_k;\theta)$, $y_{k+1}=f(y_k,u_k)$, con $\theta\in\{v,c,a,w\}$:
+\[
+\td{y_{k+1}}{\theta}
+=\underbrace{\pd{y_{k+1}}{u_k}\pd{u_k}{\theta}}_{\text{aporte del paso presente}}
++\underbrace{\left[\pd{y_{k+1}}{y_k}+\pd{y_{k+1}}{u_k}\pd{u_k}{y_k}\right]}_{\text{Jacobiano del lazo cerrado}}\td{y_k}{\theta},
+\qquad \td{y_0}{\theta}=0
+\]
+\textbf{Con el modelo del sistema} se calculan: $\pd{y_{k+1}}{y_k}$ (Jacobiano) y $\pd{y_{k+1}}{u_k}$.\\
+\textbf{Con el neuro--controlador} se calculan: $\pd{u_k}{\theta}$ (derivadas simples respecto a pesos/parámetros) y $\pd{u_k}{y_k}$.}
+
+Frente al BPTT (que retropropaga por toda la trayectoria almacenada), el DBP avanza \emph{hacia adelante} junto con la simulación y es más eficiente en memoria.
+
+Para la red de una capa oculta con \textbf{sigmoide bipolar} (la usada en los programas del curso):
+\[
+\mathbf m=v^{T}\mathbf y_k,\qquad
+n_j=\frac{2}{1+e^{-(m_j-c_j)/a_j}}-1,\qquad
+u_k=w^{T}\mathbf n
+\]
+\[
+\pd{n_j}{m_j}=\frac{1-n_j^2}{2a_j},\qquad
+\pd{u}{w}=\mathbf n,\qquad
+\pd{u}{v}=\mathbf y_k(w^{T}D)
+\]
+\[
+\pd{u}{c_j}=w_j\frac{n_j^2-1}{2a_j},\qquad
+\pd{u}{a_j}=w_j\frac{(n_j^2-1)(m_j-c_j)}{2a_j^2},\qquad
+\pd{u}{\mathbf y_k}=w^{T}D\,v^{T},\qquad D=\mathrm{diag}\!\left(\frac{1-n_j^2}{2a_j}\right)
+\]
+
+\subsection{Buenas prácticas de entrenamiento}
+
+\begin{itemize}[itemsep=1pt]
+\item \textbf{Conjunto de posiciones iniciales:} se entrena simultáneamente con varias posiciones iniciales (en los programas del curso, cuatro), acumulando gradientes de todas las trayectorias; luego la red generaliza a otras posiciones.
+\item \textbf{Aprendizaje incremental:} como los humanos, la red aprende primero \emph{tareas simples} (condiciones iniciales cercanas a un estado estable) y se amplía progresivamente el rango, reutilizando los pesos entrenados. Esencial para sistemas inestables en amplio rango de operación.
+\end{itemize}
+
+\subsection{Tracking y realimentación parcial}
+
+\textbf{Tracking / regulación en $x^{*}$.} El controlador entrenado para estabilización, $u_k=N(\mathbf x_k)$, se adapta cambiando entradas y salida:
+\[
+\boxed{u_k=u^{*}+N(\mathbf x_k-\mathbf x^{*})}
+\qquad\text{con la condición de equilibrio}\qquad
+\boxed{\mathbf x^{*}=f(\mathbf x^{*},u^{*})}
+\]
+($\mathbf x^{*}$ y $u^{*}$ no se eligen de forma independiente).
+
+\textbf{Realimentación parcial de salida.} Si no se mide todo el estado, el controlador usa sólo la(s) variable(s) medida(s) y, para recuperar la información dinámica, sus \emph{valores pasados} (retardos $z^{-1}$) como entradas adicionales. El entrenamiento (dinámico) sigue igual, con $\pd{u}{\mathbf y}$ nulo en las componentes no medidas.
+
+\subsection{Integración de sistemas lineales y redes neuronales}
+
+\begin{itemize}[itemsep=1pt]
+\item \textbf{Modelo no lineal = modelo lineal + red en paralelo:} $y_{k+1}=A y_k+B u_k+N(y_k,u_k)$. El modelo lineal aporta el conocimiento (parámetros); la red, entrenada con datos del sistema real, corrige la parte no lineal y amplía el rango de validez.
+\item \textbf{Controlador no lineal = controlador lineal + red en paralelo:} $u_k = u_k^{lineal} + N(y_k)$. El controlador lineal (diseñado sobre el modelo linealizado) funciona cerca del punto de operación; la red, entrenada con el modelo no lineal considerando al lineal, extiende y mejora el desempeño. \emph{(Esta idea es la base del control lineal--difuso del truck--tráiler, Sección 7.)}
+\item \textbf{Controlador dinámico:} red recurrente $u_{k}=N(y_k,u_{k-1})$ entrenada considerando la dinámica del sistema.
+\end{itemize}
+
+%=====================================================================
+\section{Robots móviles tipo carro: modelamiento y control \hfill {\normalsize [Clase 10]}}
+
+\subsection{Tipos y modelo cinemático (modelo bicicleta)}
+
+Tipos: carro de 4 ruedas (delanteras dirección, traseras tracción), diferencial de 2 ruedas, y tipo tráiler (dos cuerpos articulados). El carro se reduce al \textbf{modelo bicicleta} (dos ruedas): rueda delantera = dirección ($\delta$), rueda trasera = tracción; $(x,y)$ es el punto central del eje trasero, $\phi$ la inclinación respecto al eje $X$, $L$ la distancia entre ejes.
+
+\textbf{Supuestos:} las ruedas no deslizan; baja velocidad ($v<3$ m/s) $\Rightarrow$ \textbf{modelo cinemático} (sólo geometría; no intervienen masas ni fricciones). Ángulos antihorarios positivos.
+\[
+\dot x=v\cos\phi,\qquad
+\dot y=v\sin\phi,\qquad
+\dot\phi=-\frac{v}{L}\tan\delta
+\qquad (L\gg\Delta r)
+\]
+Discretizando con avance por paso $\Delta r=v\,\Delta t$:
+\[
+x_{k+1}=x_k+\Delta r\cos\phi_k,\qquad
+y_{k+1}=y_k+\Delta r\sin\phi_k,\qquad
+\phi_{k+1}=\phi_k-\frac{\Delta r}{L}\tan\delta_k
+\]
+
+\subsection{Estrategia de posicionamiento}
+
+Para alcanzar una posición deseada sobre una recta (p.\,ej.\ $x^{*}=0$, $\phi^{*}=\pi/2$, avanzando luego hasta $y^{*}$), la estrategia es: \textbf{primero alcanzar la recta con la orientación correcta y después avanzar en línea recta} hasta la posición final (así se evita colisionar con obstáculos a los costados).
+
+\clave{\textbf{Idea clave:} la señal de control $\delta$ \emph{no depende de la coordenada a lo largo de la recta} (si la recta es vertical, $\delta$ no depende de $y$; si es horizontal, no depende de $x$). El controlador sólo necesita la coordenada transversal y el ángulo: se reduce el problema a 2 variables. La convergencia debe ser \emph{asintótica} (sin cruzar la recta oscilando).}
+
+\subsection{Seguimiento de trayectorias: posición deseada perpendicular}
+
+En cada instante se traza una \textbf{perpendicular} desde la posición presente del robot a la trayectoria deseada; el punto de intersección define la posición deseada instantánea y la tangente en ese punto define la orientación deseada.
+
+\begin{itemize}[itemsep=1pt]
+\item \textbf{Recta a $45\grados$} ($y=x-c$): $\ x^{*}=\dfrac{x+y}{2}$ (por geometría), $\ \phi^{*}=\pi/4$, $\ \delta^{*}=0$.
+\item \textbf{Circunferencia de radio $R$} (centro conocido): la perpendicular pasa por el centro; por semejanza de triángulos se obtiene $x^{*}$ (o $y^{*}$) y $\ \phi^{*}=\operatorname{atan}\dfrac{50-x}{y}$ (para el círculo del ejemplo de clase), con
+\[
+\boxed{\delta^{*}=\operatorname{atan}\frac{L}{R}}
+\]
+el ángulo de timón constante que corresponde a describir la circunferencia.
+\end{itemize}
+
+\textbf{Medición/estimación de $x$ y $\phi$:} sensores de distancia, cámaras, triangulación infrarroja, observadores y filtros de Kalman. (Problema de navegación con balizas $b_1,b_2,b_3$.)
+
+%=====================================================================
+\section{Control difuso: fundamentos y diseño \hfill {\normalsize [Clases 10 y 11 — material común]}}
+
+\subsection{Motivación y conceptos básicos}
+
+El conductor humano controla con lógica multivaluada basada en \textbf{acciones lingüísticas} (``girar el timón un poco a la izquierda''), aplicando reglas SI--ENTONCES aprendidas por experiencia, sin leyes matemáticas complejas. El control difuso imita ese mecanismo y sirve para estabilización, regulación y tracking.
+
+\begin{itemize}[itemsep=1pt]
+\item \textbf{Variable lingüística vs.\ numérica:} ``la temperatura es alta'' (lingüística) vs.\ ``la temperatura es $32\grados$C'' (numérica). Un valor numérico puede pertenecer a varios valores lingüísticos con distinto grado.
+\item \textbf{Función de pertenencia:} definida para cada valor lingüístico; da el grado de pertenencia de un valor numérico al valor lingüístico. Se definen con \textbf{traslape} entre particiones contiguas (sólo entre dos adyacentes) y de modo que la \textbf{suma de pertenencias sea 1}.
+\item \textbf{Reglas IF--THEN:} SI (\emph{antecedente}: combinación de valores lingüísticos de las entradas) ENTONCES (\emph{consecuente}: valor lingüístico de la salida). El conjunto completo es la \textbf{base de reglas}, núcleo del controlador, construida con la experiencia de un operador humano para \emph{todas} las combinaciones posibles del antecedente.
+\item \textbf{Operadores lógicos:} AND $=$ mínimo (o producto); OR $=$ máximo (o suma acotada).
+\end{itemize}
+
+\subsection{Proceso de diseño de un controlador difuso (receta general)}
+
+\clave{\textbf{Pasos de diseño} (aplican a cualquier problema del curso):
+\begin{enumerate}[itemsep=0pt]
+\item Determinar las \textbf{variables de entrada y salida} del controlador (típicamente: error de posición \emph{y} velocidad; la salida es el actuador).
+\item Determinar el \textbf{rango} de cada variable, de modo que el \emph{valor deseado sea el punto medio} del rango (agregar margen adicional si es necesario; el rango de una velocidad se determina experimentalmente aplicando la entrada máxima, con margen del 20--30\%).
+\item \textbf{Particionar} cada rango en un número \textbf{impar} de particiones \textbf{simétricas}, con \textbf{traslape} entre contiguas.
+\item Asignar un \textbf{valor lingüístico} a cada partición y definir su \textbf{función de pertenencia} (triangulares/trapezoidales).
+\item Construir la \textbf{base de reglas} (experiencia humana; una regla por combinación del antecedente).
+\item Calcular la salida en tiempo real por \textbf{inferencia MIN--MAX} y \textbf{defuzzificación} (centro de gravedad o Sugeno).
+\end{enumerate}}
+
+\subsection{Ejemplo canónico: robot carro (recta vertical $x^{*}=50$, $\phi^{*}=90\grados$)}
+
+Entradas $x$ y $\phi$, salida $\delta$; movimiento en retroceso a baja velocidad.
+\begin{itemize}[itemsep=1pt]
+\item $x\in[0,100]$, punto medio $x^{*}=50$; \textbf{5 particiones}: IZ, CI, CE, CD, DE.
+\item $\phi\in[-90\grados,270\grados]$, punto medio $\phi^{*}=90\grados$; \textbf{7 particiones}: AD, HD, VD, VE, VI, HI, AI.
+\item $\delta\in[-30\grados,30\grados]$, punto medio $\delta^{*}=0$; \textbf{5 particiones}: NG, NM, ZE, PM, PG.
+\item Base de reglas: $5\times 7=35$ reglas. Ejemplos: IF $x$=CI AND $\phi$=AD $\to$ $\delta$=NG; IF $x$=IZ AND $\phi$=VE $\to$ $\delta$=NG; IF $x$=CD AND $\phi$=AI $\to$ $\delta$=PM.
+\end{itemize}
+
+\textbf{Inferencia MIN--MAX (Mamdani) — tres casos vistos en clase:}
+\begin{enumerate}[itemsep=1pt]
+\item \textbf{Se activa 1 regla} ($x=62$, $\phi=-22\grados$): $x$=CD (0.62), $\phi$=HD (0.86), luego $\delta$=PG con $\min(0.62,0.86)=0.62$; centro de gravedad del área de PG recortada a 0.62 $\Rightarrow \delta=22.5\grados$.
+\item \textbf{Se activan 2 reglas} ($x=55$, $\phi=-22\grados$): (CE,HD)$\to$NG con 0.08; (CD,HD)$\to$PG con 0.36; COG de ambas áreas $\Rightarrow \delta=20.2\grados$.
+\item \textbf{Se activan 4 reglas} ($x=55$, $\phi=5\grados$): (CE,HD)$\to$NG 0.08; (CE,VD)$\to$PG 0.08; (CD,HD)$\to$PG 0.36; (CD,VD)$\to$PM 0.36; COG $\Rightarrow \delta=12.6\grados$.
+\end{enumerate}
+
+\textbf{Defuzzificación por método de Sugeno:} a cada partición de la salida se le asigna un \emph{valor representativo} (NG$=-30$, NM$=-10$, ZE$=0$, PM$=10$, PG$=30$) y
+\[
+\delta=\frac{\sum_i \mu_i\, f_i}{\sum_i \mu_i}
+\qquad\text{(caso 3: }\delta=\tfrac{-30(0.08)+30(0.08)+30(0.36)+10(0.36)}{0.08+0.08+0.36+0.36}=16.36\grados\text{)}
+\]
+Más simple de calcular que el COG y de resultado similar.
+
+\textbf{Extensiones (sin rediseñar):}
+\begin{itemize}[itemsep=1pt]
+\item \textbf{Otra posición deseada $x^{*}$:} corrimiento de la entrada: $x\leftarrow x-(x^{*}-50)$.
+\item \textbf{Recta horizontal ($y^{*}$, $\phi^{*}=0$):} el mismo controlador con entradas $y$ y $\phi$.
+\end{itemize}
+
+\textbf{Implementación en Matlab:} (1) búsqueda de las particiones activas de $x$, que produce \texttt{ValueX} (pares partición--pertenencia); (2) ídem para $\phi$, que produce \texttt{ValueP}; (3) con ambas se consulta la base de reglas y se obtiene \texttt{ValueD} (particiones de $\delta$ activas con sus grados); (4) se calculan las áreas recortadas y el centro de gravedad.
+
+\subsection{Segundo ejemplo: posición de un motor DC con tornillo sinfín}
+
+Masa $m$ desplazada por un motor DC con tornillo sinfín; objetivo $x\to x^{*}=0$; voltaje positivo desplaza a la derecha. Modelo: $x_{k+1}=Ax_k+Bu_k+WF_{s_k}$ con $\mathbf x=[x\ \dot x\ i]^T$ y fricción seca $F_s$.
+\begin{itemize}[itemsep=1pt]
+\item Entradas del controlador: $x$ \textbf{y} $\dot x$ (imprescindible); salida: $V$. Rangos con margen: $x\in[-0.75,0.75]$, $\dot x\in[-0.85,0.85]$ (experimental $+$ 20--30\%), $V\in[-30,30]$.
+\item Particiones: $x$: MI, IZ, CE, DE, MD; $\dot x$: RI, IZ, ZE, DE, RD; $V$: NE, ZE, PO.
+\item Reglas por razonamiento físico, p.\,ej.: IF $x$=MD AND $\dot x$=RD $\to$ $V$=NE (muy a la derecha y alejándose rápido: frenar y regresar); IF $x$=CE AND $\dot x$=RI $\to$ $V$=PO (en el centro pero yéndose rápido a la izquierda: frenar).
+\item Otras posiciones deseadas: corrimiento del rango de $x$.
+\item \textbf{Robustez:} analizar el efecto de la fricción seca (produce \emph{error en estado estacionario}).
+\end{itemize}
+
+%=====================================================================
+\section{Control difuso del robot truck--tráiler \hfill {\normalsize [Clase 12]}}
+
+Robot de dos cuerpos articulados (truck $L_1$ + tráiler $L_2$), en retroceso, sin deslizamiento, $v<3$ m/s. Aparece la variable crítica $\theta_{12}=\theta_1-\theta_2$ y el riesgo de \textbf{jack--knife} ($\theta_{12}\to\pm90\grados$).
+
+\begin{itemize}[itemsep=1pt]
+\item \textbf{Entradas del controlador difuso:} $x$ (7 particiones), $\theta_2$ (7), $\theta_{12}$ (3: NE--ZE--PO). \textbf{Salida:} $\delta$ (7 particiones). En la práctica bastan menos particiones (5 para $x$, 5 para $\theta_2$, 3 para $\delta$).
+\item \textbf{Base de reglas tridimensional:} se construyen \emph{tres matrices} $7\times7$ (una por cada valor de $\theta_{12}$):
+  \begin{itemize}[itemsep=0pt]
+  \item $\theta_{12}=$ ZERO: se construye analizando caso por caso (como el robot carro).
+  \item $\theta_{12}=$ NEG: \emph{toda} la matriz $\to$ $\delta$ negativo máximo (partición 1).
+  \item $\theta_{12}=$ POS: \emph{toda} la matriz $\to$ $\delta$ positivo máximo (partición 7).
+  \end{itemize}
+\item \textbf{Justificación (análisis dinámico):} hay relación inversa entre $\dot\theta_{12}$ y $\delta$. Si $\theta_{12}$ es negativo (cerca de $-90\grados$), $\dot\theta_{12}$ debe ser positivo máximo $\Rightarrow$ $\delta$ negativo máximo; si $\theta_{12}$ es positivo, lo contrario. \textbf{Prioridad absoluta: evitar el jack--knife}; sólo cuando $\theta_{12}\approx0$ se atiende el posicionamiento.
+\item La inferencia es la misma (fuzzificar las 3 entradas, mínimo por regla, defuzzificación por COG). Ejemplo de clase: $x=30$, $\theta_2=88\grados$, $\theta_{12}=48\grados$ activa reglas con mínimos 0.5 y 0.4.
+\item Las funciones de pertenencia de $\theta_{12}$ pueden modificarse (ancho de la partición ZERO) para ajustar el compromiso velocidad de convergencia vs.\ magnitud de $\theta_{12}$ (ver Sección 7).
+\end{itemize}
+
+%=====================================================================
+\section{Redes neuro--difusas \hfill {\normalsize [Clase 12]}}
+
+\subsection{Motivación y tipos}
+
+\begin{center}
+\small
+\begin{tabular}{l l}
+\toprule
+\textbf{Redes neuronales} & \textbf{Lógica difusa}\\
+\midrule
+Procesan datos; pueden aprender & Procesa experiencia humana\\
+Óptimas para optimización & Estructura clara mediante reglas\\
+Estructura oscura (caja negra) & No requiere modelo del sistema\\
+\bottomrule
+\end{tabular}
+\end{center}
+La red neuro--difusa combina ambas: \emph{lógica difusa implementada mediante una red neuronal} (estructura clara $+$ capacidad de aprender).
+
+\textbf{Tres tipos} (según el consecuente; el antecedente es igual en los tres):
+
+\begin{itemize}[itemsep=0pt]
+\item \textbf{Tipo 1:} el consecuente es un \emph{valor numérico}: IF $x_1$=IZ AND $x_2$=VE $\to$ $u=15$.
+\item \textbf{Tipo 2:} el consecuente es una \emph{función de las entradas}: $u=g(x_1,x_2)$.
+\item \textbf{Tipo 3:} el consecuente es un \emph{valor lingüístico}: $u=NB$ (con su función de pertenencia).
+\end{itemize}
+
+\subsection{Estructura (red Tipo 1) y entrenamiento}
+
+Capas: (1) entradas numéricas $\to$ (2) funciones de pertenencia parametrizadas (centro, pendiente) $\to$ (3) reglas: AND como \textbf{producto} de las pertenencias del antecedente $\to$ (4) \textbf{normalización} $\bar\mu_i=\mu_i/\sum\mu_i$ $\to$ (5) salida $=\sum_i\bar\mu_i f_i$ con $f_i$ el valor representativo del consecuente de cada regla.
+
+\clave{\textbf{Proceso de diseño:} (1) construir el controlador fuzzy clásico; (2) representarlo como red neuro--difusa (al inicio trabaja \emph{exactamente igual} que el fuzzy); (3) \emph{si se desea}, entrenarla (DBP) para modificar los valores representativos $f_i$ del consecuente o los parámetros (centro, pendiente) de las funciones de pertenencia. \textbf{Importante:} considerar el factor de normalización $1/\sum\mu_i$ en el cálculo de las derivadas totales.}
+
+En el Tipo 2 se entrenan los coeficientes de las funciones $g(x_1,x_2)$ del consecuente. Aplicación de referencia: \emph{Identification and Control of Nonlinear Vehicle Dynamics Using Neural Networks} (A. Morán). Trabajo del curso: controlador neuro--difuso del truck--tráiler a partir del fuzzy (\texttt{fuzzytrailerxbueno.m}, \texttt{neurofuzzy1.m}), ajustando el factor de salida, sin entrenamiento, verificando varias posiciones iniciales.
+
+\subsection{Formación de robots (aplicación)}
+
+\textbf{Líder--seguidor:} el líder apunta a la posición final deseada; la posición deseada del seguidor es la posición \emph{presente} del líder (con varios seguidores, cada uno sigue al anterior). Cada robot usa su propio controlador de posicionamiento.
+
+%=====================================================================
+\section{Control lineal--difuso del truck--tráiler \hfill {\normalsize [Clase 13 — paper Morán \& Nagai]}}
+
+Es la síntesis de las ideas del curso: \emph{controladores lineales simples integrados mediante lógica difusa}.
+
+\subsection{Modelo y estrategia}
+
+Estados $\mathbf x=[\,y\ \ \theta_2\ \ \theta_{12}\,]^T$, entrada $u=\tan\delta$, $v$ constante (retroceso):
+\[
+\dot y=v\cos\theta_{12}\sin\theta_2,\qquad
+\dot\theta_2=-\frac{v}{L_2}\sin\theta_{12},\qquad
+\dot\theta_{12}=\frac{v}{L_2}\sin\theta_{12}-\frac{v}{L_1}\tan\delta
+\]
+La coordenada $x$ \textbf{no} se incluye (al converger a $y=0$, $x$ es proporcional al tiempo). Estrategia: alcanzar la recta $y^{*}=0$ con $\theta_2^{*}=0$, $\theta_{12}^{*}=0$ y avanzar recto entre los obstáculos $\Rightarrow$ el posicionamiento se vuelve un problema de \emph{estabilización} de 3 variables.
+
+\subsection{Diseño: linealización + integración difusa}
+
+Linealizando alrededor de $\theta_2^{*}=0$, $\theta_{12}^{*}=0$ ($\sin\theta\approx\theta$, $\cos\theta\approx1$):
+\[
+\begin{bmatrix}\dot y\\\dot\theta_2\\\dot\theta_{12}\end{bmatrix}=
+\begin{bmatrix}0&v&0\\0&0&-v/L_2\\0&0&v/L_2\end{bmatrix}
+\begin{bmatrix}y\\\theta_2\\\theta_{12}\end{bmatrix}+
+\begin{bmatrix}0\\0\\-v/L_1\end{bmatrix}\tan\delta
+\qquad\Rightarrow\qquad
+\tan\delta=-k_1y-k_2\theta_2-k_3\theta_{12}
+\]
+válida sólo cerca de $\theta_{12}=0$. Para cubrir todo el rango $(-90\grados,90\grados)$ se particiona $\theta_{12}$ en NB/ZE/PB y se integran tres controladores como suma ponderada por las pertenencias:
+\[
+\text{IF }\theta_{12}=\text{PB}\to\delta=\delta_{\max};\qquad
+\text{IF }\theta_{12}=\text{ZE}\to\delta=\text{ley lineal};\qquad
+\text{IF }\theta_{12}=\text{NB}\to\delta=\delta_{\min}
+\]
+(los extremos evitan el jack--knife: relación inversa entre $\dot\theta_{12}$ y $\tan\delta$). Para otras posiciones deseadas:
+\[
+\tan\delta-\tan\delta^{*}=-k_1(y-y^{*})-k_2(\theta_2-\theta_2^{*})-k_3(\theta_{12}-\theta_{12}^{*})
+\]
+con valores deseados \emph{coherentes y físicamente realizables}.
+
+\subsection{Seguimiento de trayectorias (posición deseada perpendicular)}
+
+Se traza la perpendicular desde la posición presente $(x,y)$ a la trayectoria deseada: la intersección da $y^{*}$ y la tangente da $\theta_2^{*}$; con las ecuaciones cinemáticas se obtienen $\theta_{12}^{*}$ y $\delta^{*}$.
+\begin{itemize}[itemsep=1pt]
+\item \textbf{Recta} $y=ax+b$ (inclinación $\alpha$): $\ y^{*}=\dfrac{ax+a^2y+b}{1+a^2}$, $\ \theta_2^{*}=\alpha$, $\ \theta_{12}^{*}=0$, $\ \delta^{*}=0$.
+\item \textbf{Circunferencia} (centro $(x_c,y_c)$, radio $R$): la perpendicular pasa por el centro;
+\[
+y^{*}=\frac{R\,(y-y_c)}{\sqrt{(x-x_c)^2+(y-y_c)^2}}+y_c,\qquad
+\theta_2^{*}=\operatorname{atan}\frac{x_c-x}{y-y_c}
+\]
+\[
+\boxed{\theta_{12}^{*}=\operatorname{atan}\frac{L_2}{R}},\qquad
+\boxed{\delta^{*}=\operatorname{atan}\frac{L_1}{\sqrt{L_2^2+R^2}}}
+\]
+($\theta_{12}^{*}$ y $\delta^{*}$ son \emph{constantes}, como corresponde a una trayectoria circular; comparar con $\delta^{*}=\operatorname{atan}(L/R)$ del carro simple).
+\end{itemize}
+
+\subsection{Efecto del ancho de las particiones de $\theta_{12}$}
+
+\clave{Una partición ZE \textbf{más ancha} (extremos NB/PB con menor pertenencia) impone menos restricción sobre $\theta_{12}$: el robot converge \textbf{más rápido} y con menor radio de giro, a costa de valores \textbf{mayores} de $\theta_{12}$ y $\delta$ (sin llegar al jack--knife). Una ZE angosta da la conducta opuesta (más conservadora). Es el parámetro de sintonía del compromiso rapidez vs.\ seguridad.}
+
+%=====================================================================
+\clearpage
+\section{Formulario / hoja de repaso rápido}
+
+\subsection*{Redes y entrenamiento}
+\[
+\text{Sigmoide bipolar: } n=\frac{2}{1+e^{-(m-c)/a}}-1,\qquad
+\pd{n}{m}=\frac{1-n^2}{2a}
+\]
+\[
+\pd{n}{c}=\frac{n^2-1}{2a},\qquad
+\pd{n}{a}=\frac{(n^2-1)(m-c)}{2a^2}
+\]
+\[
+\text{Costo: } J=\frac12\sum_{k=1}^{N}(\mathbf x_k-\mathbf x^{*})^{T}Q(\mathbf x_k-\mathbf x^{*}),
+\qquad
+\td{J}{\theta}=\sum_k(\mathbf x_k-\mathbf x^{*})^{T}Q\,\td{\mathbf x_k}{\theta}
+\]
+\[
+\textbf{DBP: }\ \td{\mathbf x_{k+1}}{\theta}
+=\pd{\mathbf x_{k+1}}{u_k}\pd{u_k}{\theta}
++\Bigl[\underbrace{\pd{\mathbf x_{k+1}}{\mathbf x_k}}_{\text{modelo}}
++\underbrace{\pd{\mathbf x_{k+1}}{u_k}}_{\text{modelo}}
+\underbrace{\pd{u_k}{\mathbf x_k}}_{\text{controlador}}\Bigr]\td{\mathbf x_k}{\theta},
+\qquad \td{\mathbf x_0}{\theta}=0
+\]
+\[
+\text{Tracking: } u_k=u^{*}+N(\mathbf x_k-\mathbf x^{*}) \ \text{ con } \ \mathbf x^{*}=f(\mathbf x^{*},u^{*})
+\]
+
+\subsection*{Robot carro}
+\[
+\dot x=v\cos\phi,\quad \dot y=v\sin\phi,\quad \dot\phi=-\frac{v}{L}\tan\delta;
+\qquad
+y_{k+1}=y_k+\Delta r\sin\phi_k,\quad \phi_{k+1}=\phi_k-\frac{\Delta r}{L}u_k
+\]
+\[
+\pd{\mathbf x_{k+1}}{\mathbf x_k}=\begin{bmatrix}1&\Delta r\cos\phi_k\\0&1\end{bmatrix},
+\qquad
+\pd{\mathbf x_{k+1}}{u_k}=\begin{bmatrix}0\\-\Delta r/L\end{bmatrix},
+\qquad
+\delta^{*}_{\text{círculo}}=\operatorname{atan}\frac{L}{R}
+\]
+
+\subsection*{Truck--tráiler}
+\[
+\dot y=v\cos\theta_{12}\sin\theta_2,\qquad
+\dot\theta_2=-\frac{v}{L_2}\sin\theta_{12},\qquad
+\dot\theta_{12}=\frac{v}{L_2}\sin\theta_{12}-\frac{v}{L_1}\tan\delta
+\]
+\[
+\tan\delta=-k_1y-k_2\theta_2-k_3\theta_{12}\ (\theta_{12}\approx0);
+\qquad
+\theta_{12}^{*}=\operatorname{atan}\frac{L_2}{R},\qquad
+\delta^{*}=\operatorname{atan}\frac{L_1}{\sqrt{L_2^2+R^2}}
+\]
+
+\subsection*{Control difuso}
+\begin{itemize}[itemsep=1pt]
+\item Diseño: entradas/salida $\to$ rangos (deseado al centro) $\to$ particiones impares simétricas con traslape (suma de pertenencias $=1$) $\to$ valores lingüísticos y MFs $\to$ base de reglas (todas las combinaciones) $\to$ inferencia.
+\item Inferencia Mamdani: fuzzificar $\to$ AND $=$ mínimo por regla $\to$ agregación por máximo $\to$ COG del área recortada.
+\item Sugeno: $u=\dfrac{\sum_i\mu_i f_i}{\sum_i\mu_i}$ con $f_i$ valores representativos.
+\item Otra posición deseada: corrimiento de la entrada ($x\leftarrow x-(x^{*}-x_{centro})$).
+\item Red neuro--difusa Tipo 1: pertenencias $\to$ producto $\to$ normalización $\to$ $\sum\bar\mu_if_i$; entrenable ($f_i$ o parámetros de MFs, considerando la normalización en las derivadas).
+\end{itemize}
+
+\subsection*{Mapa de temas $\to$ Examen Final 2025-1}
+\begin{center}
+\small
+\begin{tabular}{c l l}
+\toprule
+Pregunta & Tema & Sección de este resumen\\
+\midrule
+P1 & Control lineal--difuso truck--tráiler, $y$ lejanos & 7 (+ 5)\\
+P2 & Diseño de controlador difuso (motor CC) + red neuro--difusa & 4 + 6\\
+P3 & DBP: costo, ecuación recursiva, matrices del robot carro & 2.4 + 3.1 + 8\\
+P4 & Medición parcial, aprendizaje incremental, tracking & 2.5 + 2.6\\
+P5 & Programa Matlab del DBP (robot carro) & 2.4 + 3 + 8\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\vspace{10pt}
+\begin{center}
+\small\itshape Resumen elaborado íntegramente a partir del material del curso (Clases 7, 9, 10, 11, 12 y 13).
+\end{center}
+
+\end{document}
